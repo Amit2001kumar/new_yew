@@ -1,0 +1,70 @@
+CREATE PROCEDURE tbl_RecycleEmployeeLeaveDetails(
+	@RowId	int,
+	@UserId	int = 0,
+	@CallFrom varchar(100) = ''
+)
+
+AS
+
+	BEGIN
+		BEGIN TRANSACTION tbl_RecycleEmployeeLeaveDetails
+			BEGIN TRY
+			IF NOT EXISTS (
+				SELECT EmpLeaveDetails_RowId 
+				FROM tbl_EmployeeLeaveDetails 
+				INNER JOIN (
+					SELECT EmpLeaveDetails_EmployeeId AS TEMP_EmpLeaveDetails_EmployeeId
+					FROM tbl_EmployeeLeaveDetails
+					WHERE EmpLeaveDetails_RowId = @RowId) AS TEMP
+					ON TEMP_EmpLeaveDetails_EmployeeId = EmpLeaveDetails_EmployeeId AND EmpLeaveDetails_IsActDct = 1
+			)
+				BEGIN
+					UPDATE tbl_EmployeeLeaveDetails SET
+						EmpLeaveDetails_IsActDct = 1,
+						EmpLeaveDetails_ModBy = @UserId,
+						EmpLeaveDetails_ModDate = GETDATE(),
+						EmpLeaveDetails_DeleteRemark = null,
+						EmpLeaveDetails_DeleteAttachment = null,
+						EmpLeaveDetails_DeleteFile = null
+					WHERE EmpLeaveDetails_RowId = @RowId
+					AND EmpLeaveDetails_IsActDct = 0
+
+					SELECT 'Rollback Data Successfully' AS [Message],
+					CAST(1 as BIT) AS [Result]
+				END
+			ELSE
+				BEGIN
+					SELECT 'Record already exists in data...' AS [Message],
+					CAST(0 as BIT) AS [Result]
+				END
+		COMMIT TRANSACTION tbl_RecycleEmployeeLeaveDetails
+			END TRY
+			BEGIN CATCH
+		ROLLBACK TRANSACTION tbl_RecycleEmployeeLeaveDetails
+
+				SELECT 'An error occured during this operation, Error Line :' + CAST(ERROR_LINE() AS varchar(10)) AS [Message],
+				CAST(0 AS BIT) AS [Result]
+
+				DECLARE @ERRLINE	int	=	ERROR_LINE()
+				DECLARE @ERRMESSAGE	varchar(1000)	=	ERROR_MESSAGE()
+				DECLARE @ERRNUMBER	int	=	ERROR_NUMBER()
+				DECLARE @ERRPROCEDURE	varchar(1000)	=	ERROR_PROCEDURE()
+				DECLARE @User	varchar(100)
+
+				SELECT @User	=	User_PersonalName
+				FROM lama_UserMaster
+				WHERE User_RowId	=	@UserId
+
+				EXEC cmm_ErrorLogEntry
+					@ERROR_LINE	=	@ERRLINE,
+					@ERROR_MESSAGE	=	@ERRMESSAGE,
+					@ERROR_NUMBER	=	@ERRNUMBER,
+					@ERROR_PROCEDURE	=	@ERRPROCEDURE,
+					@UserName	=	@User
+			END CATCH
+	END
+
+
+
+
+

@@ -1,0 +1,159 @@
+-- tbl_SaveEmployeeLeaveDetails 7,59,'20230811',1,null,null,null,null,240,'W',0
+ALTER PROCEDURE tbl_SaveEmployeeLeaveDetails
+	@RowId				Int,
+	@EmployeeId			Int,
+	@StartDate			Date,
+	@Days				Int,
+	@EndDate			Date,
+	@DeleteRemark		Varchar(1000),
+	@DeleteAttachment	Varchar(100),
+	@DeleteFile			nVarchar(Max),
+	@UserId				Int,
+	@CallFrom			Varchar(10) = '',
+	@ActionId			Int	-- 0 For Insert and Update, 1 For Delete
+As
+Begin
+
+	BEGIN TRANSACTION tbl_SaveEmployeeLeaveDetails
+
+		BEGIN TRY
+
+			DECLARE @Dup_RowId	Int = 0
+			DECLARE @Dup_ActDct Int = 0
+			DECLARE @DuplicateMsg Varchar(500) = ''
+			Declare @ProposedEndDate	Date
+			
+			
+			If Getdate() < @StartDate And @EndDate Is Null
+			Set @ProposedEndDate = IsNull(@EndDate, DateAdd(dd,@Days,@StartDate))
+			Else
+			Set @ProposedEndDate = IsNull(@EndDate,Getdate())
+
+			SELECT	 @Dup_RowId = EmpLeaveDetails_RowId,
+					 @Dup_ActDct = EmpLeaveDetails_IsActDct,
+					 @DuplicateMsg = 'Record '
+					FROM tbl_EmployeeLeaveDetails
+			Where EmpLeaveDetails_EmployeeId = @EmployeeId
+			And   (@StartDate Between EmpLeaveDetails_StartDate And ISNULL(EmpLeaveDetails_EndDate,GetDate()) Or 
+				 @ProposedEndDate   Between EmpLeaveDetails_StartDate And ISNULL(EmpLeaveDetails_EndDate,GetDate()) Or 
+				 EmpLeaveDetails_StartDate Between @StartDate And @ProposedEndDate Or
+					ISNULL(EmpLeaveDetails_EndDate,GetDate())   Between  @StartDate And @ProposedEndDate)
+				    
+			
+			IF @ActionId = 0 AND @RowId = 0
+			BEGIN
+						
+				IF @Dup_RowId > 0 AND @Dup_ActDct = 1
+				BEGIN
+
+					SELECT @DuplicateMsg + 'Already Exists...' AS [Message],
+							CAST(0 AS BIT) AS [RESULT]
+				
+				END
+				ELSE IF @Dup_RowId > 0 AND @Dup_ActDct = 0
+				BEGIN
+					SELECT @DuplicateMsg + 'Already Exists in Recycle Bin...' AS [Message],
+					CAST(0 AS BIT) AS [RESULT]
+				END
+				ELSE
+				BEGIN
+					INSERT INTO tbl_EmployeeLeaveDetails
+					(	
+						EmpLeaveDetails_EmployeeId,
+						EmpLeaveDetails_StartDate,
+						EmpLeaveDetails_Days,
+						EmpLeaveDetails_EndDate,
+						EmpLeaveDetails_AddBy
+					
+					)
+					VALUES
+					(	
+						@EmployeeId,
+						@StartDate,
+						@Days,
+						@EndDate,
+						@UserId
+					
+					)
+					SELECT 'Record Saved Successfully...' AS [Message],
+							CAST(1 AS BIT) AS [Result]
+				END
+			END
+			ELSE IF @ActionId = 0 AND NOT @RowId = 0
+			BEGIN
+				IF @Dup_RowId > 0 AND @Dup_ActDct = 1 AND @RowId <> @Dup_RowId
+				BEGIN
+					SELECT @DuplicateMsg + 'Already Exists...' AS [Message],
+					CAST(0 AS BIT) AS [Result]
+				END
+				ELSE IF @Dup_RowId > 0 AND @Dup_ActDct = 0 AND @RowId <> @Dup_RowId
+					BEGIN
+						SELECT @DuplicateMsg + 'Already Exists In Recycle Bin...' AS [Message],
+						CAST(0 AS BIT) AS [Result]
+					END
+				ELSE
+					BEGIN
+						UPDATE tbl_EmployeeLeaveDetails SET
+							EmpLeaveDetails_EmployeeId =	@EmployeeId,
+							EmpLeaveDetails_StartDate = @StartDate,
+							EmpLeaveDetails_Days = @Days,
+							EmpLeaveDetails_EndDate = @EndDate,
+							EmpLeaveDetails_ModBy =	@UserId,
+							EmpLeaveDetails_ModDate	=	GETDATE()
+						WHERE  EmpLeaveDetails_RowId = @RowId
+						AND EmpLeaveDetails_IsActDct	= 1
+
+						Select	'Record Updated Successfully...' As [Message],
+						Cast(1 As Bit) As [Result]
+					END
+			END
+			ELSE IF @ActionId = 1
+			BEGIN
+				UPDATE tbl_EmployeeLeaveDetails 
+					SET EmpLeaveDetails_ModBy = @UserId,
+						EmpLeaveDetails_ModDate = GETDATE(),
+						EmpLeaveDetails_IsActDct = 0,
+						EmpLeaveDetails_DeleteRemark = @DeleteRemark,
+						EmpLeaveDetails_DeleteAttachment = @DeleteAttachment,
+						EmpLeaveDetails_DeleteFile = @DeleteFile
+				WHERE EmpLeaveDetails_RowId = @RowId
+				AND EmpLeaveDetails_IsActDct = 1
+
+				SELECT	'Record Deleted Successfully...' AS [Message],
+				CAST(1 AS BIT) AS [Result]
+			END
+			ELSE
+			BEGIN
+				SELECT 'INVALID ACTION.' AS [Message],
+				CAST(0 AS BIT) AS [Result]
+			END
+		COMMIT TRANSACTION tbl_SaveEmployeeLeaveDetails
+			
+			END TRY
+			BEGIN CATCH
+
+				ROLLBACK TRANSACTION tbl_SaveEmployeeLeaveDetails
+					SELECT 'An error occured during this operation, Error Line :' + CAST(ERROR_LINE() AS varchar(10)) AS [Message],
+					CAST(0 AS BIT) AS [Result]
+
+					DECLARE @ERRLINE	int	=	ERROR_LINE()
+					DECLARE @ERRMESSAGE	varchar(1000)	=	ERROR_MESSAGE()
+					DECLARE @ERRNUMBER	int	=	ERROR_NUMBER()
+					DECLARE @ERRPROCEDURE	varchar(1000)	=	ERROR_PROCEDURE()
+					DECLARE @User	varchar(100)
+
+					SELECT @User	=	User_PersonalName
+					FROM lama_UserMaster
+					WHERE User_RowId	=	@UserId
+
+					EXEC cmm_ErrorLogEntry
+						@ERROR_LINE	=	@ERRLINE,
+						@ERROR_MESSAGE	=	@ERRMESSAGE,
+						@ERROR_NUMBER	=	@ERRNUMBER,
+						@ERROR_PROCEDURE	=	@ERRPROCEDURE,
+						@UserName	=	@User
+			END CATCH
+
+End 
+
+

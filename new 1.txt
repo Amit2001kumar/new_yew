@@ -1,0 +1,16 @@
+Create Table tbl_EmployeeLeaveDetails(
+	EmpLeaveDetails_RowId					Int Identity(1,1) Primary Key,
+	EmpLeaveDetails_EmployeeId				Int,
+	EmpLeaveDetails_StartDate				Date,
+	EmpLeaveDetails_Days					Int,
+	EmpLeaveDetails_EndDate					Date,
+	EmpLeaveDetails_AddBy					Int not null,
+	EmpLeaveDetails_AddDate					DateTime default getDate(),
+	EmpLeaveDetails_ModBy					Int,
+	EmpLeaveDetails_ModDate					DateTime,
+	EmpLeaveDetails_IsActDct				Bit default 1,
+	EmpLeaveDetails_DeleteRemark			Varchar(1000),
+	EmpLeaveDetails_DeleteFile				nVarchar(max),
+	EmpLeaveDetails_DeleteAttachment		Varchar(100),
+	
+);

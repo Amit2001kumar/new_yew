@@ -1,0 +1,83 @@
+ALTER PROCEDURE tbl_GetEmployeeLeaveDetails(
+	@RowId	int = 0,
+	@ForDeleted	bit = 1,
+	@UserId int,
+	@CallFrom varchar(100) = '',
+	@MenuId varchar(100) = ''
+)
+
+AS
+	BEGIN
+		DECLARE	@RecycleAction VARCHAR(500) = '';
+		DECLARE	@EditAction VARCHAR(500) = '';
+		DECLARE	@DeleteAction VARCHAR(500) = '';
+		DECLARE @IsRecycle BIT = 0;
+
+		SELECT	@RecycleAction = CASE WHEN ISNULL(UserRights_IsRecycle,0) = 1 THEN '<a style="color: #008629; padding: 0px 5px;" title="Recycle"><i id="Recycle" class="fa fa-undo"></i></a>' ELSE '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' END,
+				@EditAction = CASE WHEN ISNULL(UserRights_IsEdit,0) = 1 THEN '<a style="color: #007bff; padding: 0px 5px;" title="Edit"><i id="Edit" class="fa fa-pencil"></i></a>' ELSE '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' END,
+				@DeleteAction = CASE WHEN ISNULL(UserRights_IsDelete,0) = 1 THEN '<a style="color: #dc3545; padding: 0px 5px;" title="Delete"><i id="Delete" class="fa fa-trash-o"></i></a>' ELSE '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' END,
+				@IsRecycle = ISNULL(UserRights_IsRecycle,0)
+		FROM	lama_UserRightsMaster
+				INNER JOIN cmm_MenuMaster ON Menu_RowId = UserRights_MenuId AND Menu_IsActDct = 1 AND Menu_Id = @MenuId
+		WHERE	UserRights_UserId = @UserId 
+		AND		UserRights_IsActDct = 1
+
+		IF @RowId = 0 AND @ForDeleted = 1 ---for main grid
+			BEGIN
+				SELECT
+					'<div><a style="color: #008629; padding: 0px 4px;" title="View"><i id="View" class="fa fa-eye"></i></a>'+
+					@EditAction + @DeleteAction							As		[Action,80],
+					EmpLeaveDetails_RowId								AS		[RowId,10,0],
+					(Select Top 1 ISNULL(Employee_FirstName,'') + ' ' + ISNULL(Employee_MiddleName,'') + ' ' + ISNULL(Employee_LastName,'') 
+						From tbl_EmployeeCurrentJobDetails
+						INNER JOIN tbl_EmployeeMaster ON Employee_RowId = EmpJobDetails_EmployeeId
+											 AND Employee_IsActDct = 1
+						Where EmpJobDetails_EmployeeId = EmpLeaveDetails_EmployeeId
+						And EmpJobDetails_IsActDct = 1)	AS		[Employee Name,200],
+					FORMAT(EmpLeaveDetails_StartDate, 'dd/MM/yyyy')		AS		[Start Date , 100],
+					EmpLeaveDetails_Days								AS		[Days , 200],
+					FORMAT(EmpLeaveDetails_EndDate, 'dd/MM/yyyy')		AS		[End Date , 100]
+				FROM tbl_EmployeeLeaveDetails
+
+				WHERE EmpLeaveDetails_IsActDct = 1
+				ORDER BY EmpLeaveDetails_EmployeeId, EmpLeaveDetails_RowId
+			END
+		ELSE IF @RowId = 0 AND @ForDeleted = 0    -----only for reclycle bin
+			BEGIN
+				SELECT 
+					'<div style = "text-align:center;">'+
+					CASE WHEN NOT EmpLeaveDetails_DeleteFile IS NULL AND @IsRecycle = 1 THEN '<a style="color: #008629; padding: 0px 5px;" title="Download"><i id="Download" class="fa fa-download"></i></a>'
+					ELSE '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;' END +	
+					@RecycleAction										AS		[Action,80],
+					EmpLeaveDetails_RowId								AS		[RowId,10,0],
+					(Select Top 1 ISNULL(Employee_FirstName,'') + ' ' + ISNULL(Employee_MiddleName,'') + ' ' + ISNULL(Employee_LastName,'') 
+						From tbl_EmployeeCurrentJobDetails
+						INNER JOIN tbl_EmployeeMaster ON Employee_RowId = EmpJobDetails_EmployeeId
+											 AND Employee_IsActDct = 1
+						Where EmpJobDetails_EmployeeId = EmpLeaveDetails_EmployeeId
+						And EmpJobDetails_IsActDct = 1)	as [Employee Name,200],
+					FORMAT(EmpLeaveDetails_StartDate, 'dd/MM/yyyy')		AS		[Start Date , 100],
+					EmpLeaveDetails_Days								AS		[Days , 200],
+					FORMAT(EmpLeaveDetails_EndDate, 'dd/MM/yyyy')		AS		[End Date , 100],
+					EmpLeaveDetails_DeleteRemark						AS		[Remark,150],
+					EmpLeaveDetails_DeleteAttachment					AS		[Attachment,10,0],
+					EmpLeaveDetails_DeleteFile							AS		[File,10,0]	
+				FROM tbl_EmployeeLeaveDetails
+				WHERE EmpLeaveDetails_IsActDct = 0
+				ORDER BY EmpLeaveDetails_EmployeeId, EmpLeaveDetails_RowId
+			END
+		ELSE  ----- After show in particular employee details show 
+			BEGIN
+				SELECT	EmpLeaveDetails_RowId							AS		[RowId],
+						EmpLeaveDetails_EmployeeId						AS		[EmployeeId],
+						FORMAT(EmpLeaveDetails_StartDate, 'dd/MM/yyyy')	AS		[StartDate],
+						EmpLeaveDetails_Days							AS		[Days],
+						FORMAT(EmpLeaveDetails_EndDate, 'dd/MM/yyyy')	AS		[EndDate]
+				FROM tbl_EmployeeLeaveDetails
+				WHERE EmpLeaveDetails_RowId = @RowId
+				AND EmpLeaveDetails_IsActDct = 1
+			END
+	END
+
+
+
